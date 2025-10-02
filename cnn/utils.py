@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-print(plt.__version__)
 def plot_sample(bitmap_sample):
     img = bitmap_sample.squeeze()
 

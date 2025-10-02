@@ -2,3 +2,4 @@ gzip
 venv
 unpacked_byclass
 datasets_npy
+__pycache__/

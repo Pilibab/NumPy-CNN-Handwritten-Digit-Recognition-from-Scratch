@@ -81,13 +81,16 @@ class CNN:
         feature_x = ((W - kW) // stride) + 1
 
         # stores the convultion 
-        feature_map = np.zeros(kH, kW)
+        feature_map = np.zeros((feature_y, feature_x))
+
 
         for h in range(feature_y):
             for w in range(feature_x):
                 # a snippet of an image 
                 patch = image[h * stride : h * stride + kH, w * stride : w * stride + kW]
                 feature_map[h,w] = np.sum(kernel * patch)
+
+        return feature_map
 
     def reLu(self, feature_map):
         """
@@ -113,7 +116,7 @@ class CNN:
         pool_y = ((y - pool_size) // stride) + 1
 
 
-        pooled_feature = np.zeroes(pool_x, pool_y)
+        pooled_feature = np.zeros((pool_x, pool_y))
 
         for h in range(pool_y):
             for w in range(pool_x):
@@ -124,11 +127,25 @@ class CNN:
 
         return pooled_feature
     def soft_max(Self, logits):
-        exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Numerical stability improvement
-        return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+
+        if logits.ndim == 1:    # single case
+            exp_logits = np.exp(logits - np.max(logits)) 
+            return exp_logits / np.sum(exp_logits)
+        elif logits.ndim == 2:  # batch case
+            exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))  # Numerical stability improvement
+            return exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+        else: 
+            raise ValueError("logits must be either in 1d or 2d")
     
-    def loss_function():
-        pass
+    def loss_function(self, true_y, prediction):
+        eps = 1e-12
+        prediction = np.clip(prediction, eps, 1. - eps)
+
+        if true_y.ndim == 1:    # single case 
+            return -np.sum(true_y * np.log(prediction + 1e-9))
+        if true_y.ndim == 2:    # batch case 
+            return -np.mean(np.sum(true_y * np.log(prediction + 1e-9), axis=1))    # sum the row 
+
+        return 
     
-    def flatten(self, pool):
-        return pool.flatten()
+    def flatten(self, pool): return pool.flatten()
