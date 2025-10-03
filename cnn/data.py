@@ -78,5 +78,14 @@ def extract_gzip(input_dir = RAW_DIR, data_set_type=DATASET_TYPE):
 
             print(f'\t- Extracted: {filename} -> {uncompressed_filename}')
 
-extract_gzip()
-load_emnist_byclass()
+def load_binary():
+    xtrain = np.load("datasets_npy/X_train.npy", mmap_mode='r')
+    ytrain = np.load("datasets_npy/Y_train.npy", mmap_mode='r')
+    xtest = np.load("datasets_npy/X_test.npy", mmap_mode='r')
+    ytest = np.load("datasets_npy/Y_test.npy", mmap_mode='r')
+
+    # reshape
+    xtrain = xtrain.reshape((*xtrain.shape, 1 ))
+    xtest = xtest.reshape((*xtest.shape, 1 ))
+
+    return xtrain, ytrain, xtest, ytest

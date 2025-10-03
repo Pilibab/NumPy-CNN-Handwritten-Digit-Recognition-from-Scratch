@@ -55,10 +55,10 @@ def test_softmax(cnn):
 
 
 def test_loss(cnn):
-    y_true = np.array([0, 1, 0])  # one-hot
+    y_true = 2 # one-hot
     y_pred = np.array([0.2, 0.7, 0.1])  # already softmaxed
     output = cnn.loss_function(y_true, y_pred)
-    expected = -np.sum(y_true * np.log(y_pred))  # should equal -0.7
+    expected = -np.log(y_pred[y_true])   # = -np.log(0.1)
     assert np.isclose(output, expected)
 
 
@@ -68,6 +68,53 @@ def test_flatten(cnn):
     expected = np.array([1,2,3,4])
     assert np.array_equal(output, expected)
 
+
+# *______________test back propagation__________________
+def test_softmax_crossentropy_single(cnn):
+    # Single sample
+    logits = np.array([2.0, 1.0, 0.1])   # raw scores
+    y_true = 0                            # correct class index
+
+    loss, dZ = cnn.softmax_crossentropy_backward(logits, y_true)
+
+    # Manual softmax
+    exp = np.exp(logits - np.max(logits))
+    probs = exp / np.sum(exp)
+
+    # Expected loss
+    expected_loss = -np.log(probs[y_true])
+
+    assert np.isclose(loss, expected_loss), f"Expected {expected_loss}, got {loss}"
+
+    # Gradient should be probs - one_hot(y)
+    expected_dZ = probs.copy()
+    expected_dZ[y_true] -= 1
+    assert np.allclose(dZ.squeeze(), expected_dZ)
+
+
+def test_softmax_crossentropy_batch(cnn):
+    # Batch of 2 samples, 3 classes
+    logits = np.array([[2.0, 1.0, 0.1],
+                    [0.5, 2.5, 0.3]])
+    y_true = np.array([0, 1])   # first sample -> class 0, second -> class 1
+
+    loss, dZ = cnn.softmax_crossentropy_backward(logits, y_true)
+
+    # Manual calculation
+    exp = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+    probs = exp / np.sum(exp, axis=1, keepdims=True)
+
+    expected_loss = -np.mean([np.log(probs[0,0]), np.log(probs[1,1])])
+
+    assert np.isclose(loss, expected_loss)
+
+    # Gradient check
+    expected_dZ = probs.copy()
+    expected_dZ[0,0] -= 1
+    expected_dZ[1,1] -= 1
+    expected_dZ /= 2  # batch average
+
+    assert np.allclose(dZ, expected_dZ)
 
 # if __name__ == "__main__":
 # test_dense_layer(cnn)
