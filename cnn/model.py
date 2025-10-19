@@ -15,8 +15,8 @@ class CNN:
                             2D numpy array for a batch (shape (batch_size, input_size))
                             (If you pass a 1D vector, treat it as a single-example batch.)
             output_size:    int, number of neurons in this dense layer (e.g., number of classes)
-            weights:        optional pre-initialized weight matrix (see shape note below)
-            bias:           optional pre-initialized bias vector
+            weights:        optional pre-initialized weight matrix
+            bias:           optional pre-initi alized bias vector
 
         Returns:
             logits: raw scores (shape (output_size,) for single input or
@@ -62,8 +62,6 @@ class CNN:
         else: 
             return logits
         
-
-
     def convolution(self, image, kernel, stride=1):
         """
         Args:
@@ -74,8 +72,8 @@ class CNN:
         return:
             feature map:        
         """
-        H,W = image.shape
-        kH, kW = kernel.shape
+        H, W, _= image.shape
+        kH, kW, _= kernel.shape
 
         feature_y = ((H - kH) // stride) + 1
         feature_x = ((W - kW) // stride) + 1
@@ -87,11 +85,10 @@ class CNN:
         for h in range(feature_y):
             for w in range(feature_x):
                 # a snippet of an image 
-                patch = image[h * stride : h * stride + kH, w * stride : w * stride + kW]
+                patch = image[h * stride : h * stride + kH, w * stride : w * stride + kW, : ]
                 feature_map[h,w] = np.sum(kernel * patch)
 
         return feature_map
-
 
     def reLu(self, feature_map):
         """
@@ -128,7 +125,6 @@ class CNN:
 
         return pooled_feature
     
-    
     def soft_max(Self, logits):
         # if logits.ndim == 1:    # single case
         #     exp_logits = np.exp(logits - np.max(logits)) 
@@ -149,7 +145,6 @@ class CNN:
 
         return probs
     
-
     def loss_function(self, true_y, prediction):
         # eps = 1e-12
         # batch_size = len(true_y)
@@ -179,10 +174,21 @@ class CNN:
         # mean over batch (even if it's just 1 element)
         return -np.mean(np.log(probs))
     
-    def flatten(self, pool): return pool.flatten()
+    def flatten(self, pool):
+        # If no batch dimension, add one temporarily
+        single_sample = False
+        if pool.ndim == 3:  # (num_filters, H, W)
+            pool = pool[np.newaxis, ...]  # -> (1, num_filters, H, W)
+            single_sample = True
+
+        batch_size = pool.shape[0]
+        flat = pool.reshape(batch_size, -1)
+        return (flat.squeeze(0) if single_sample else flat), pool.shape
 
 
-    def softmax_crossentropy_backward(self, logits, labels, from_logits=True, average=True):
+    #* BACKPROP: Loss → dSoftmax → dDense → dFlatten → dPool → dReLU → dConv
+
+    def softmax_crossentropy_backward(self, logits, labels):   
         """
         Combined backward for softmax + cross-entropy loss.
 
@@ -197,9 +203,6 @@ class CNN:
             dZ: gradient of loss w.r.t. logits (same shape as logits), ready to feed into previous layer
         """
 
-        # 1) If labels are integer class indices, convert to one-hot of shape (batch_size, num_classes).
-        # turns an int into list with 1 element [n]
-
         labels = np.atleast_1d(labels)
 
         class_size = logits.shape[1] if logits.ndim > 1 else logits.shape[0]
@@ -208,29 +211,14 @@ class CNN:
         coded_labels = np.zeros(batch_size)
         coded_labels[np.arange(batch_size[0]), labels] = 1
 
-        # 2) Compute stable softmax:
-        #    - shift = logits - max(logits, axis=1, keepdims=True)
-        #    - exp_shift = exp(shift)
-        #    - probs = exp_shift / sum(exp_shift, axis=1, keepdims=True)
         prob = self.soft_max(logits)
 
-
-        # 3) Compute loss (optional):
-        #    - per-sample loss = -sum(label * log(probs + eps), axis=1)
-        #    - loss = mean(per-sample loss) if average else sum(per-sample loss)
         loss = self.loss_function(labels, prob)
 
 
-        # 4) Compute gradient dZ:
-        #    - If using mean-loss: dZ = (probs - labels) / batch_size
-        #    - If using sum-loss: dZ = probs - labels
-        #    - This is the simplified result of backprop through softmax+cross-entropy.
-
         dZ = (prob - coded_labels) / batch_size[0]
 
-        # 5) Return loss and dZ (or just dZ if you prefer)
         return loss, dZ
-
 
     def dense_backward(self, dZ, cache, average=True):
         """
@@ -250,26 +238,25 @@ class CNN:
             grads: dict with keys 'dW' (input_size, output_size) and 'db' (output_size,)
         """
 
-        # 1) Unpack cached values: X, W, b
-        #    - ensure X.shape = (batch_size, input_size)
-        #    - ensure W.shape = (input_size, output_size)
+        X, W, b = cache
 
-        # 2) Optionally check shapes: dZ.shape == (batch_size, output_size)
+        batch_size, _ =  X.shape 
+        _, output_size = W.shape 
 
-        # 3) Compute gradient wrt weights:
-        #    - dW = X.T @ dZ
-        #    - If average: dW = dW / batch_size
-        #    - If using L2 reg: dW += lambda * W  (document and implement separately)
+        if dZ.shape != (batch_size, output_size):
+            raise ValueError("dZ shape missmatch")
 
-        # 4) Compute gradient wrt bias:
-        #    - db = sum(dZ, axis=0)
-        #    - If average: db = db / batch_size
+        dW = np.dot(np.transpose(X), dZ)
+        db = np.sum(dZ, axis=0)
 
-        # 5) Compute gradient wrt input:
-        #    - dX = dZ @ W.T
+        if average:
+            db = db / batch_size
+            dW = dW / batch_size
 
-        # 6) Return dX and grads dict (dW, db)
-        pass
+        dX = np.dot(dZ, np.transpose(W))
+
+        grads = {"dW": dW, "db": db}
+        return dX, grads
 
     def relu_backward(self, dA, cache):
         """
@@ -283,16 +270,13 @@ class CNN:
             dZ: gradient w.r.t. pre-activation input (same shape)
         """
 
-        # 1) Unpack cache: either Z (pre-activation) or A (post-activation).
-        #    - If you saved Z: mask = (Z > 0)
-        #    - If you saved A: mask = (A > 0)  (both work if ReLU is used)
+        Z = cache
 
-        # 2) Elementwise multiply dA by mask:
-        #    - dZ = dA * mask
-        #    - This zeros-out gradients where the neuron was inactive during forward.
+        mask = (Z > 0).astype(float)
 
-        # 3) Return dZ
-        pass
+        dz = dA * mask
+
+        return dz
 
     def maxpool_backward(self, dP, cache):
         """
@@ -301,8 +285,7 @@ class CNN:
         Args:
             dP: gradient wrt pooled output (batch_size, out_h, out_w, depth) or (out_h,out_w) for single map
             cache: saved values from forward:
-                - input feature map (or batch)
-                - pool_size
+                - input feature map (or batch) 
                 - stride
                 - optionally argmax indices (recommended for speed)
 
@@ -310,20 +293,32 @@ class CNN:
             dX: gradient wrt input feature map (same shape as the cached input)
         """
 
-        # 1) Unpack cached values: X (input), pool_size, stride, maybe argmax indices.
-        #    - If you didn't save argmax during forward, you'll need to recompute which element was max for each window.
+        X, stride, pool_size = cache
+        H, W = X.shape
+        out_H, out_W = dP.shape
 
-        # 2) Initialize dX as zeros with same shape as X (and same dtype as X).
+        dX = np.zeros_like(X)
 
-        # 3) Loop over batch (if present), channels, and spatial positions:
-        #    for each pooling window:
-        #        - identify the location(s) of the max value (if ties, distribute? Usually first max)
-        #        - route the scalar gradient dP[h,w,channel] to dX at that max location:
-        #            dX[window_max_index] += dP[h,w,channel]
-        #    - If you used "average" loss scaling, divide by batch_size appropriately (consistent with loss)
+        for i in range(out_H):
+            for j in range(out_W):
+                # Identify the window region used in forward
+                h_start, h_end = i * stride, i * stride + pool_size
+                w_start, w_end = j * stride, j * stride + pool_size
 
-        # 4) Return dX
-        pass
+                # Extract that region
+                window = X[h_start:h_end, w_start:w_end]
+
+                # Find where the max was
+                mask = (window == np.max(window))
+
+                # Distribute the incoming gradient only to the max
+                dX[h_start:h_end, w_start:w_end] += mask * dP[i, j]
+
+        return dX
+    
+    def flatten_backward(self, dFlat, original_shape):
+        return dFlat.reshape(original_shape)
+
 
     def conv_backward(self, dOut, cache, stride=1, padding=0):
         """
@@ -346,30 +341,56 @@ class CNN:
             db: gradient wrt bias (one per out_channel)
         """
 
-        # 1) Unpack cached values: X (original or padded), K (kernel), maybe original_input_shape
+        X, K = cache
+        if X.ndim == 3:  # single image
+            X = X[np.newaxis, ...]
+            dOut = dOut[np.newaxis, ...]
+        batch_size, in_h, in_w, in_c = X.shape
+        k_h, k_w, _, out_c = K.shape
+        _, out_h, out_w, _ = dOut.shape
 
-        # 2) Initialize gradients:
-        #    - dK zeros same shape as K
-        #    - dX zeros same shape as padded input (or original input + padding)
-        #    - db zeros shape (out_channels,)
+        # Initialize gradients
+        dX = np.zeros_like(X)
+        dK = np.zeros_like(K)
+        db = np.zeros((out_c,), dtype=np.float32)
 
-        # 3) Compute db:
-        #    - db = sum(dOut over batch and spatial dims)  (sum across batch/out_h/out_w for each out_channel)
+        # Pad input and its gradient
+        if padding > 0:
+            X_pad = np.pad(X, ((0,0),(padding,padding),(padding,padding),(0,0)), mode='constant')
+            dX_pad = np.pad(dX, ((0,0),(padding,padding),(padding,padding),(0,0)), mode='constant')
+        else:
+            X_pad = X
+            dX_pad = dX
 
-        # 4) Loop over batch images:
-        #    For each image:
-        #      For each out_channel:
-        #        For each spatial position (h,w) in dOut:
-        #          - compute corresponding input patch in X (taking stride and padding into account)
-        #          - accumulate dK[:, :, in_channels, out_channel] += patch * dOut[image,h,w,out_channel]
-        #          - accumulate dX_patch += K[:, :, :, out_channel] * dOut[image,h,w,out_channel]
-        #    - This is the double-convolution-like accumulation; be mindful of broadcasting and channel ordering.
+        # Bias gradient
+        db = np.sum(dOut, axis=(0,1,2))  # sum over all spatial + batch dims
 
-        # 5) After loops, if you padded X, remove padding from dX to match original input shape.
+        # Main backward loops
+        for b in range(batch_size):
+            for h in range(out_h):
+                for w in range(out_w):
+                    h_start = h * stride
+                    w_start = w * stride
+                    patch = X_pad[b, h_start:h_start+k_h, w_start:w_start+k_w, :]
+                    for c in range(out_c):
+                        dK[:, :, :, c] += patch * dOut[b, h, w, c]
+                        dX_pad[b, h_start:h_start+k_h, w_start:w_start+k_w, :] += K[:, :, :, c] * dOut[b, h, w, c]
 
-        # 6) If using mean-loss scaling, divide dK and db (and possibly dX) by batch_size to be consistent.
+        # Remove padding from dX if applied
+        if padding > 0:
+            dX = dX_pad[:, padding:-padding, padding:-padding, :]
+        else:
+            dX = dX_pad
 
-        # 7) Return dX (unpadded), dK, db
-        pass
+        # Average over batch for stability (optional)
+        dK /= batch_size
+        db /= batch_size
+        dX /= batch_size
+
+        if dX.shape[0] == 1:
+            dX = dX.squeeze(0)
+            dOut = dOut.squeeze(0)
+
+        return dX, dK, db
 
 

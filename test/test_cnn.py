@@ -69,6 +69,7 @@ def test_flatten(cnn):
     assert np.array_equal(output, expected)
 
 
+
 # *______________test back propagation__________________
 def test_softmax_crossentropy_single(cnn):
     # Single sample
