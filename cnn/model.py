@@ -62,7 +62,7 @@ class CNN:
         else: 
             return logits
         
-    def convolution(self, image, kernel, stride=1):
+    def convolution(self, image, kernels, stride = 1, padding = 0):
         """
         Args:
             image (sample):     2d array / bit image shape (28,28)
@@ -72,21 +72,25 @@ class CNN:
         return:
             feature map:        
         """
-        H, W, _= image.shape
-        kH, kW, _= kernel.shape
+        H, W, c = image.shape
+        kH, kW, cK, num_fiters= kernels.shape
 
-        feature_y = ((H - kH) // stride) + 1
-        feature_x = ((W - kW) // stride) + 1
+        feature_y = ((H - kH + 2 * padding) // stride) + 1
+        feature_x = ((W - kW + 2 * padding) // stride) + 1
 
         # stores the convultion 
-        feature_map = np.zeros((feature_y, feature_x))
+        feature_map = np.zeros((feature_y, feature_x, num_fiters))
 
+        if padding > 0:
+            image = np.pad(image, ((padding,padding),(padding,padding),(0,0)), mode='constant')
 
-        for h in range(feature_y):
-            for w in range(feature_x):
-                # a snippet of an image 
-                patch = image[h * stride : h * stride + kH, w * stride : w * stride + kW, : ]
-                feature_map[h,w] = np.sum(kernel * patch)
+        for f in range(num_fiters):
+            kernel = kernels[:, :, :, f]
+            for h in range(feature_y):
+                for w in range(feature_x):
+                    # a snippet of an image 
+                    patch = image[h * stride : h * stride + kH, w * stride : w * stride + kW, : ]
+                    feature_map[h, w, f] = np.sum(kernel * patch)
 
         return feature_map
 
