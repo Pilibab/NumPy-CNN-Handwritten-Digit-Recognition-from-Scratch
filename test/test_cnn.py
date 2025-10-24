@@ -1,4 +1,5 @@
 from cnn.model import CNN
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest 
 
@@ -125,3 +126,73 @@ def test_softmax_crossentropy_batch(cnn):
 # test_softmax(cnn)
 # test_loss(cnn)
 # test_flatten(cnn)
+
+def test_convolution_single_image(model, image, kernel=None, stride=1):
+    """
+    Tests a CNN's convolution method on a single image.
+
+    Args:
+        model: CNN instance with .convolution() method
+        image: single image (2D array or 3D array)
+        kernel: optional filter (2D array), default = edge detector
+        stride: stride for convolution
+    """
+
+    # 1. Default kernel (simple edge detector if none provided)
+    if kernel is None:
+        kernel = np.array([[1, 0, -1],
+                           [1, 0, -1],
+                           [1, 0, -1]])
+        
+    kernel = np.expand_dims(kernel, axis=-1)
+
+    print(f"Image shape: {image.shape}")
+    print(f"Kernel shape: {kernel.shape}")
+
+    # 2. Perform convolution
+    feature_map = model.convolution(image, kernel, stride=stride)
+
+    # 3. Plot result
+    plt.figure(figsize=(6, 3))
+    plt.subplot(1, 2, 1)
+    plt.title("Original")
+    plt.imshow(image.squeeze(), cmap="gray")
+
+    plt.subplot(1, 2, 2)
+    plt.title("Feature Map")
+    plt.imshow(feature_map, cmap="gray")
+
+    plt.show()
+
+    return feature_map
+
+
+def test_reLu_single_image(model, feature_map):
+    activated = model.reLu(feature_map)
+    # 3. Plot result
+    plt.figure(figsize=(6, 3))
+    plt.subplot(1, 2, 1)
+    plt.title("Feature Map")
+    plt.imshow(feature_map.squeeze(), cmap="gray")
+
+    plt.subplot(1, 2, 2)
+    plt.title("Activated Map")
+    plt.imshow(activated, cmap="gray")
+
+    plt.show()
+    return activated
+
+def test_max_pool_single_image(model, activated_map):
+    pooled = model.max_pool(activated_map)
+    # 3. Plot result
+    plt.figure(figsize=(6, 3))
+    plt.subplot(1, 2, 1)
+    plt.title("Activated Map")
+    plt.imshow(activated_map.squeeze(), cmap="gray")
+
+    plt.subplot(1, 2, 2)
+    plt.title("Pooled Map")
+    plt.imshow(pooled, cmap="gray")
+
+    plt.show()
+    return pooled
